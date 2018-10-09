@@ -3,7 +3,7 @@ pfree boolean,
 dirty boolean,
 nro_disk_page int,
 last_touch timestamp);
-
+drop table traza;
 Create table traza(tiempo serial, nro_disk_page int);
 
 
@@ -12,10 +12,24 @@ insert into bufferpool values(2,true,false,2,clock_timestamp());
 insert into bufferpool values(3,true,false,3,clock_timestamp());
 insert into bufferpool values(4,true,false,4,clock_timestamp());
 
-select * from bufferpool;
+
+insert into traza(nro_disk_page) values(1);						  					 
+							  
+select * from bufferpool order by last_touch;
 select * from traza;
+delete from traza;
+
 select get_disk_page(112);
-select get_disk_page(1);
+					
+							select get_disk_page(10);
+							  select get_disk_page(11);
+							  select get_disk_page(12);-- mru  
+							  select get_disk_page(13);
+							  select get_disk_page(14);
+							  select get_disk_page(15);-- mru
+							  
+							  
+							  
 							  
 CREATE OR REPLACE FUNCTION public.get_disk_page(nro_pag integer)
 	RETURNS integer
@@ -29,13 +43,14 @@ AS $BODY$
 declare
 	nroFrame integer;
 begin
+	insert into traza(nro_disk_page) values(nro_pag);						  					 
 	nroFrame = get_fr_by_page(nro_pag);
  	if(nroFrame = 0) then
 		nroFrame = get_pag_from_disk(nro_pag);
 	else
 		--reiseNotice "",b;
 	end if;
-	insert into traza(nro_disk_page) values(nro_pag);						  					 
+	
     return nroFrame;
 end;
 	
@@ -124,7 +139,8 @@ begin
 	order by nro_frame limit 1;
 	if not found then
 		--fr = pick_frame_LRU();
-		fr = pick_frame_MRU();
+		--fr = pick_frame_MRU();
+		fr = pick_frame_139();
 		-- raise notice 2
 	else
 	-- raise notice 3
@@ -198,6 +214,10 @@ declare
 begin
 	if(solicitudesSecuenciales())then
 		nroFrame = pick_frame_MRU();
+	   	drop table if exists traza;
+		Create table if not exists traza(tiempo serial, nro_disk_page int);
+	
+	    --- reset de la secuencia
 	else
 		nroFrame = pick_frame_LRU();
 	end if;							  
@@ -209,9 +229,10 @@ $BODY$;
 ALTER FUNCTION public.pick_frame_139()
     OWNER TO postgres;
 ---------------------------
+select solicitudesSecuenciales();
 	   
 CREATE OR REPLACE FUNCTION public.solicitudesSecuenciales()
-	RETURNS integer
+	RETURNS boolean
 	LANGUAGE 'plpgsql'
 	
 	COST 100
@@ -220,11 +241,31 @@ CREATE OR REPLACE FUNCTION public.solicitudesSecuenciales()
 AS $BODY$
 
 declare
+	r traza%rowtype;
 	nroFrame integer;
+	cantidad integer;
+	valorPag integer=-1;
 begin
-	select nro_frame into nroFrame from bufferpool where last_touch = (select max (last_touch) from bufferpool)
-	limit 1;
-	return nroFrame;
+	select count(nro_disk_page) into cantidad from traza;
+	
+	RAISE NOTICE 'Cantidad: ....(%)', cantidad;
+	RAISE NOTICE 'disk page: ....(%)',cantidad/2;
+	FOR r IN SELECT * FROM traza WHERE tiempo > cantidad/2 LOOP
+	   if(valorPag = -1)then
+	   		---select nro_disk_page into valorPag from r;
+	   		valorPag = r.nro_disk_page;
+	   		valorPag:= valorPag +1;
+	   		RAISE NOTICE 'Valor pag si vale -1: ....(%)',valorPag;
+	   elsif(valorPag = r.nro_disk_page) then
+	   		valorPag := valorPag +1;
+	   		RAISE NOTICE 'Valor pag si vale +1: ....(%)',valorPag;
+	   else
+	   		return false;
+	   end if;
+	   
+	   end loop;
+	
+	return true;
 end;
 	
 $BODY$;
