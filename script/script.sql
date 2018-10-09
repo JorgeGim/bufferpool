@@ -4,15 +4,19 @@ dirty boolean,
 nro_disk_page int,
 last_touch timestamp);
 
+Create table traza(tiempo serial, nro_disk_page int);
+
+
 insert into bufferpool values(1,true,false,1,clock_timestamp());
 insert into bufferpool values(2,true,false,2,clock_timestamp());
 insert into bufferpool values(3,true,false,3,clock_timestamp());
 insert into bufferpool values(4,true,false,4,clock_timestamp());
 
 select * from bufferpool;
-
+select * from traza;
 select get_disk_page(112);
-
+select get_disk_page(1);
+							  
 CREATE OR REPLACE FUNCTION public.get_disk_page(nro_pag integer)
 	RETURNS integer
 	LANGUAGE 'plpgsql'
@@ -31,6 +35,7 @@ begin
 	else
 		--reiseNotice "",b;
 	end if;
+	insert into traza(nro_disk_page) values(nro_pag);						  					 
     return nroFrame;
 end;
 	
@@ -178,4 +183,52 @@ $BODY$;
 ALTER FUNCTION public.pick_frame_MRU()
     OWNER TO postgres;
 							  
-							  
+-------------------		  
+CREATE OR REPLACE FUNCTION public.pick_frame_139()
+	RETURNS integer
+	LANGUAGE 'plpgsql'
+	
+	COST 100
+	VOLATILE
+
+AS $BODY$
+
+declare
+	nroFrame integer;
+begin
+	if(solicitudesSecuenciales())then
+		nroFrame = pick_frame_MRU();
+	else
+		nroFrame = pick_frame_LRU();
+	end if;							  
+	return nroFrame;
+end;
+	
+$BODY$;
+
+ALTER FUNCTION public.pick_frame_139()
+    OWNER TO postgres;
+---------------------------
+	   
+CREATE OR REPLACE FUNCTION public.solicitudesSecuenciales()
+	RETURNS integer
+	LANGUAGE 'plpgsql'
+	
+	COST 100
+	VOLATILE
+
+AS $BODY$
+
+declare
+	nroFrame integer;
+begin
+	select nro_frame into nroFrame from bufferpool where last_touch = (select max (last_touch) from bufferpool)
+	limit 1;
+	return nroFrame;
+end;
+	
+$BODY$;
+
+ALTER FUNCTION public.solicitudesSecuenciales()
+    OWNER TO postgres;
+		
