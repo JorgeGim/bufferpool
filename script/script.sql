@@ -6,6 +6,7 @@ last_touch timestamp);
 drop table traza;
 Create table traza(tiempo serial, nro_disk_page int);
 
+create type registro_desalojo as (frame integer,valorDesalojado integer);
 
 insert into bufferpool values(1,true,false,1,clock_timestamp());
 insert into bufferpool values(2,true,false,2,clock_timestamp());
@@ -18,6 +19,7 @@ insert into traza(nro_disk_page) values(1);
 select * from bufferpool order by last_touch;
 select * from traza;
 delete from traza;
+delete from bufferpool;
 
 select get_disk_page(112);
 					
@@ -43,12 +45,12 @@ AS $BODY$
 declare
 	nroFrame integer;
 begin
-	insert into traza(nro_disk_page) values(nro_pag);						  					 
+	insert into traza(nro_disk_page) values(nro_pag);
 	nroFrame = get_fr_by_page(nro_pag);
  	if(nroFrame = 0) then
 		nroFrame = get_pag_from_disk(nro_pag);
 	else
-		--reiseNotice "",b;
+	   	RAISE NOTICE 'Acceso a BufferPool Pag:%, Frame:%',nro_pag, nroFrame;
 	end if;
 	
     return nroFrame;
@@ -98,7 +100,7 @@ AS $BODY$
 declare
 	fr integer;
 begin
-	fr = get_free_frame();
+	fr = get_free_frame(nro_pag);
 	--read_pag_from_disk(fr,nro_pag);
 	update bufferpool set pfree='false', dirty='false', nro_disk_page=nro_pag, last_touch=clock_timestamp()
 	where nro_frame=fr;
@@ -126,14 +128,14 @@ ALTER FUNCTION public.read_pag_from_disk(fr integer, nro_pag integer)
     OWNER TO postgres;
 
 ----------------
-CREATE OR REPLACE FUNCTION public.get_free_frame()
+CREATE OR REPLACE FUNCTION public.get_free_frame(nro_pag integer)
 	RETURNS integer
 	LANGUAGE 'plpgsql'
 	COST 100
 	VOLATILE
 AS $BODY$
 declare
-	fr integer;
+	fr registro_desalojo%rowtype;
 begin
 	select b.nro_frame into fr from bufferpool b where pfree='true'
 	order by nro_frame limit 1;
@@ -141,21 +143,22 @@ begin
 		--fr = pick_frame_LRU();
 		--fr = pick_frame_MRU();
 		fr = pick_frame_139();
-		-- raise notice 2
+		RAISE NOTICE 'Acceso a disco con reemplazo. Pag: %, Frame: %, Des: %', nro_pag, fr.frame, fr.valorDesalojado;
 	else
-	-- raise notice 3
+		RAISE NOTICE 'Acceso a disco sin reemplazo. Pag: %, Frame: %', nro_pag, fr.frame;
 	end if;
-	return fr;
+	return fr.frame;
 end;	
 $BODY$;
-ALTER FUNCTION public.get_free_frame()
+ALTER FUNCTION public.get_free_frame(nro_pag integer)
     OWNER TO postgres;
 
 
 
 --------------
+Drop function public.pick_frame_LRU();
 CREATE OR REPLACE FUNCTION public.pick_frame_LRU()
-	RETURNS integer
+	RETURNS registro_desalojo
 	LANGUAGE 'plpgsql'
 	
 	COST 100
@@ -164,10 +167,16 @@ CREATE OR REPLACE FUNCTION public.pick_frame_LRU()
 AS $BODY$
 
 declare
-	nroFrame integer;
+	nroFrame registro_desalojo%rowtype;
 begin
-	select nro_frame into nroFrame from bufferpool where last_touch = (select min (last_touch) from bufferpool)
-	limit 1;
+	select nro_disk_page into nroFrame.valorDesalojado from bufferpool
+	where last_touch = (select min (last_touch) 
+	from bufferpool) limit 1;
+		
+	select nro_frame into nroFrame.frame from bufferpool 
+	where last_touch = (select min (last_touch) 
+	from bufferpool) limit 1;
+							  
 	return nroFrame;
 end;
 	
@@ -178,7 +187,7 @@ ALTER FUNCTION public.pick_frame_LRU()
 
 ------------------------------
 CREATE OR REPLACE FUNCTION public.pick_frame_MRU()
-	RETURNS integer
+	RETURNS registro_desalojo
 	LANGUAGE 'plpgsql'
 	
 	COST 100
@@ -187,10 +196,16 @@ CREATE OR REPLACE FUNCTION public.pick_frame_MRU()
 AS $BODY$
 
 declare
-	nroFrame integer;
+	nroFrame registro_desalojo%rowtype;
 begin
-	select nro_frame into nroFrame from bufferpool where last_touch = (select max (last_touch) from bufferpool)
-	limit 1;
+	select nro_disk_page into nroFrame.valorDesalojado from bufferpool 
+	where last_touch = (select max (last_touch) 
+	from bufferpool) limit 1;
+							  
+	select nro_frame into nroFrame.frame from bufferpool 
+	where last_touch = (select max (last_touch)
+	from bufferpool) limit 1;
+	
 	return nroFrame;
 end;
 	
@@ -201,7 +216,7 @@ ALTER FUNCTION public.pick_frame_MRU()
 							  
 -------------------		  
 CREATE OR REPLACE FUNCTION public.pick_frame_139()
-	RETURNS integer
+	RETURNS registro_desalojo
 	LANGUAGE 'plpgsql'
 	
 	COST 100
@@ -210,7 +225,7 @@ CREATE OR REPLACE FUNCTION public.pick_frame_139()
 AS $BODY$
 
 declare
-	nroFrame integer;
+	nroFrame registro_desalojo%rowtype;
 begin
 	if(solicitudesSecuenciales())then
 		nroFrame = pick_frame_MRU();
@@ -248,17 +263,12 @@ declare
 begin
 	select count(nro_disk_page) into cantidad from traza;
 	
-	RAISE NOTICE 'Cantidad: ....(%)', cantidad;
-	RAISE NOTICE 'disk page: ....(%)',cantidad/2;
 	FOR r IN SELECT * FROM traza WHERE tiempo > cantidad/2 LOOP
 	   if(valorPag = -1)then
-	   		---select nro_disk_page into valorPag from r;
 	   		valorPag = r.nro_disk_page;
 	   		valorPag:= valorPag +1;
-	   		RAISE NOTICE 'Valor pag si vale -1: ....(%)',valorPag;
 	   elsif(valorPag = r.nro_disk_page) then
 	   		valorPag := valorPag +1;
-	   		RAISE NOTICE 'Valor pag si vale +1: ....(%)',valorPag;
 	   else
 	   		return false;
 	   end if;
