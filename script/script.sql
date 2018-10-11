@@ -1,67 +1,20 @@
-Create table bufferpool(nro_frame int,
+Create table if not exists bufferpool(nro_frame int,
 pfree boolean,
 dirty boolean,
 nro_disk_page int,
 last_touch timestamp);
-drop table traza;
-Create table traza(tiempo serial, nro_disk_page int);
+
+Create table if not exists traza(tiempo serial, nro_disk_page int);
 
 create type registro_desalojo as (frame integer,valorDesalojado integer);
 
-delete from traza;
 delete from bufferpool;
-
+delete from traza;
 insert into bufferpool values(1,true,false,1,clock_timestamp());
 insert into bufferpool values(2,true,false,2,clock_timestamp());
 insert into bufferpool values(3,true,false,3,clock_timestamp());
 insert into bufferpool values(4,true,false,4,clock_timestamp());
-
-							  
-select * from bufferpool order by last_touch;
-select * from traza;
-
-
-							-- MRU 7 --- LRU 10 --- 139 10
-							select get_disk_page(10);
-							select get_disk_page(11);
-							select get_disk_page(13);-- mru  
-							select get_disk_page(12);
-							select get_disk_page(20);
-							select get_disk_page(1);-- mru
-							select get_disk_page(10);
-							select get_disk_page(11);
-							select get_disk_page(13);
-							select get_disk_page(12);
-							select get_disk_page(10);
-							select get_disk_page(11);
-							  
-							select get_disk_page_MRU(10);
-							select get_disk_page_MRU(11);
-							select get_disk_page_MRU(13);-- mru  
-							select get_disk_page_MRU(12);
-							select get_disk_page_MRU(20);
-							select get_disk_page_MRU(1);-- mru
-							select get_disk_page_MRU(10);
-							select get_disk_page_MRU(11);
-							select get_disk_page_MRU(13);
-							select get_disk_page_MRU(12);
-							select get_disk_page_MRU(10);
-							select get_disk_page_MRU(11);  
-							  
-							  
-							select get_disk_page_LRU(10);
-							select get_disk_page_LRU(11);
-							select get_disk_page_LRU(13);-- mru  
-							select get_disk_page_LRU(12);
-							select get_disk_page_LRU(20);
-							select get_disk_page_LRU(1);-- mru
-							select get_disk_page_LRU(10);
-							select get_disk_page_LRU(11);
-							select get_disk_page_LRU(13);
-							select get_disk_page_LRU(12);
-							select get_disk_page_LRU(10);
-							select get_disk_page_LRU(11);  
-							  
+						  
 CREATE OR REPLACE FUNCTION public.get_disk_page(nro_pag integer)
 	RETURNS integer
 	LANGUAGE 'plpgsql'
